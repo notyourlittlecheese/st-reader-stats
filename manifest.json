@@ -1,0 +1,13 @@
+{
+  "display_name": "ST Reader Stats",
+  "loading_order": 50,
+  "requires": [],
+  "optional": [],
+  "dependencies": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Sazankaze / Codex",
+  "version": "0.1.0",
+  "auto_update": false,
+  "minimum_client_version": "1.12.0"
+}
