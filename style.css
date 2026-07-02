@@ -117,6 +117,21 @@ body.st-reader-stats-open {
   margin-bottom: 17px;
 }
 
+.st-reader-stats-dialog button,
+.st-reader-stats-settings button {
+  word-break: keep-all;
+  overflow-wrap: normal;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
+}
+
+.st-reader-stats-dialog .menu_button,
+.st-reader-stats-settings .menu_button {
+  width: auto !important;
+  min-width: max-content;
+  flex: 0 0 auto;
+}
+
 .st-reader-stats-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
@@ -318,6 +333,7 @@ body.st-reader-stats-open {
 
 .st-reader-stats-settings-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
 }
