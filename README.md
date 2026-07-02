@@ -6,6 +6,7 @@ SillyTavern 的本地阅读统计扩展，提供：
 - 当前角色全部聊天统计
 - 全部角色总览与年度热力图
 - IndexedDB 增量索引
+- Web Worker 后台统计，长聊天不会堵住手机界面
 - 当前选中 Swipe 汉字数
 - 全部 Swipe 去重生成量
 - Reroll 次数、活跃天数和聊天明细

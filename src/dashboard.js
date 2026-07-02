@@ -1,8 +1,8 @@
 import {
   aggregateStats,
-  analyzeChat,
   DEFAULT_OPTIONS,
 } from './statsCore.js';
+import { analyzeChatAsync } from './statsAnalyzer.js';
 
 const SETTINGS_KEY = 'st-reader-stats.settings.v1';
 
@@ -55,6 +55,8 @@ export class StatsDashboard {
     this.characterRecords = [];
     this.globalRecords = [];
     this.abortController = null;
+    this.currentAnalysisController = null;
+    this.currentAnalysisId = 0;
     this.dirtyChatIds = new Set();
     this.settings = this.loadSettings();
   }
@@ -192,6 +194,7 @@ export class StatsDashboard {
 
   close() {
     this.abortController?.abort();
+    this.currentAnalysisController?.abort();
     if (this.root) this.root.hidden = true;
     document.body.classList.remove('st-reader-stats-open');
   }
@@ -245,18 +248,43 @@ export class StatsDashboard {
     return this.root.querySelector('.st-reader-stats-content');
   }
 
-  renderCurrent() {
-    if (this.currentDirty || !this.currentStats) {
-      this.currentStats = analyzeChat(this.adapter.currentChat(), this.settings);
-      this.currentDirty = false;
-    }
+  async renderCurrent() {
     const character = this.adapter.currentCharacter();
-    this.content().innerHTML = this.statsView(
-      character ? `${character.name} · 当前聊天` : '当前聊天',
-      this.currentStats,
-      { showChats: false },
-    );
-    this.bindMetricToggle();
+    if (!this.currentDirty && this.currentStats) {
+      this.content().innerHTML = this.statsView(
+        character ? `${character.name} · 当前聊天` : '当前聊天',
+        this.currentStats,
+        { showChats: false },
+      );
+      this.bindMetricToggle();
+      return;
+    }
+
+    const requestId = ++this.currentAnalysisId;
+    this.currentAnalysisController?.abort();
+    this.currentAnalysisController = new AbortController();
+    this.content().innerHTML = this.loadingView('正在后台统计当前聊天…');
+
+    try {
+      const stats = await analyzeChatAsync(
+        this.adapter.currentChat(),
+        this.settings,
+        { signal: this.currentAnalysisController.signal },
+      );
+      if (requestId !== this.currentAnalysisId || this.activeTab !== 'current') return;
+      this.currentStats = stats;
+      this.currentDirty = false;
+      this.content().innerHTML = this.statsView(
+        character ? `${character.name} · 当前聊天` : '当前聊天',
+        stats,
+        { showChats: false },
+      );
+      this.bindMetricToggle();
+    } catch (error) {
+      if (error.name !== 'AbortError' && requestId === this.currentAnalysisId) {
+        this.renderError(error);
+      }
+    }
   }
 
   async renderCharacter() {
@@ -408,7 +436,7 @@ export class StatsDashboard {
         record = cached;
       } else {
         const chat = await this.adapter.loadChat(descriptor, signal);
-        const stats = analyzeChat(chat, this.settings);
+        const stats = await analyzeChatAsync(chat, this.settings, { signal });
         record = await this.cache.put(descriptor, stats);
         this.dirtyChatIds.delete(normalizedId);
       }

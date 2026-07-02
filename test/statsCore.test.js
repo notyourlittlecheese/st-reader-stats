@@ -7,6 +7,7 @@ import {
   countHan,
   countUniqueSwipeHan,
 } from '../src/statsCore.js';
+import { analyzeChatAsync } from '../src/statsAnalyzer.js';
 
 test('countHan counts Han characters only', () => {
   assert.equal(countHan('你好，world！123'), 2);
@@ -61,4 +62,14 @@ test('aggregateStats merges date buckets', () => {
   assert.equal(total.selectedHan, 4);
   assert.equal(total.activeDays, 1);
   assert.equal(total.dateBuckets['2026-02-01'].messages, 2);
+});
+
+test('async analyzer falls back without changing results', async () => {
+  const chat = [
+    { mes: '你好', is_user: true, send_date: '2026-03-01' },
+    { mes: '世界', is_user: false, send_date: '2026-03-01' },
+  ];
+  const expected = analyzeChat(chat, { ignoreOpeningMessage: false });
+  const actual = await analyzeChatAsync(chat, { ignoreOpeningMessage: false });
+  assert.deepEqual(actual, expected);
 });
