@@ -127,6 +127,35 @@ export function selectedSwipeText(message) {
   return String(swipes[index] ?? message?.mes ?? swipes[0] ?? '');
 }
 
+function hashString(value) {
+  let hash = 0x811c9dc5;
+  for (const char of String(value ?? '')) {
+    hash ^= char.codePointAt(0);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function messageNodeKey(message, messageIndex) {
+  const role = message.is_user ? 'user' : message.is_system ? 'system' : 'assistant';
+  const sentAt = parseDate(message.send_date)?.getTime() ?? String(message.send_date ?? '');
+  const generatedAt = parseDate(message.gen_started)?.getTime() ?? String(message.gen_started ?? '');
+  const stableIdentity = [
+    role,
+    messageIndex,
+    sentAt,
+    generatedAt,
+  ].join('|');
+
+  if (sentAt || generatedAt) return stableIdentity;
+
+  return hashString([
+    stableIdentity,
+    message.mes ?? '',
+    ...(Array.isArray(message.swipes) ? message.swipes : []),
+  ].join('|'));
+}
+
 export function normalizeMessages(chat) {
   if (!Array.isArray(chat)) return [];
   return chat.filter(item =>
@@ -164,6 +193,7 @@ export function analyzeChat(chat, options = {}) {
   let rerollCount = 0;
   let userMessages = 0;
   let assistantMessages = 0;
+  const messageEntries = [];
 
   messages.forEach((message, messageIndex) => {
     const isOpening = config.ignoreOpeningMessage &&
@@ -179,6 +209,7 @@ export function analyzeChat(chat, options = {}) {
       : countUniqueSwipeHan(swipes, config);
     const rerolls = isOpening || message.is_user ? 0 : Math.max(0, swipes.length - 1);
     const messageDay = dateKey(message.send_date);
+    const entryBuckets = {};
 
     if (message.is_user) userMessages++;
     else assistantMessages++;
@@ -192,10 +223,26 @@ export function analyzeChat(chat, options = {}) {
         selectedHan: selectedCount,
         rerolls,
       });
+      addBucket(entryBuckets, messageDay, {
+        messages: 1,
+        selectedHan: selectedCount,
+        rerolls,
+      });
 
       unique.contributions.forEach((amount, swipeIndex) => {
         const swipeDay = dateKey(message.swipe_info?.[swipeIndex]?.send_date) || messageDay;
         addBucket(buckets, swipeDay, { uniqueSwipeHan: amount });
+        addBucket(entryBuckets, swipeDay, { uniqueSwipeHan: amount });
+      });
+
+      messageEntries.push({
+        nodeKey: messageNodeKey(message, messageIndex),
+        messageIndex,
+        isUser: Boolean(message.is_user),
+        selectedHan: selectedCount,
+        uniqueSwipeHan: unique.total,
+        rerollCount: rerolls,
+        dateBuckets: entryBuckets,
       });
     }
   });
@@ -215,6 +262,7 @@ export function analyzeChat(chat, options = {}) {
     firstDate: activeDates[0] || null,
     lastDate: activeDates.at(-1) || null,
     dateBuckets: buckets,
+    messageEntries,
   };
 }
 
@@ -238,11 +286,50 @@ export function emptyStats() {
 export function aggregateStats(items) {
   const total = emptyStats();
   const dates = new Set();
+  const uniqueEntries = new Map();
+  const legacyItems = [];
 
   for (const item of items || []) {
     const stats = item?.stats || item;
     if (!stats) continue;
     total.chatCount++;
+
+    if (!Array.isArray(stats.messageEntries)) {
+      legacyItems.push(stats);
+      continue;
+    }
+
+    const characterKey = item?.characterAvatar || item?.characterName || '';
+    for (const entry of stats.messageEntries) {
+      const key = `${characterKey}::${entry.nodeKey}`;
+      const existing = uniqueEntries.get(key);
+      const score = (Number(entry.selectedHan) || 0) +
+        (Number(entry.uniqueSwipeHan) || 0) +
+        (Number(entry.rerollCount) || 0);
+      const existingScore = existing
+        ? (Number(existing.selectedHan) || 0) +
+          (Number(existing.uniqueSwipeHan) || 0) +
+          (Number(existing.rerollCount) || 0)
+        : -1;
+      if (!existing || score > existingScore) uniqueEntries.set(key, entry);
+    }
+  }
+
+  for (const entry of uniqueEntries.values()) {
+    total.messageCount++;
+    total.countedMessageCount++;
+    if (entry.isUser) total.userMessages++;
+    else total.assistantMessages++;
+    total.selectedHan += Number(entry.selectedHan) || 0;
+    total.uniqueSwipeHan += Number(entry.uniqueSwipeHan) || 0;
+    total.rerollCount += Number(entry.rerollCount) || 0;
+    for (const [key, bucket] of Object.entries(entry.dateBuckets || {})) {
+      dates.add(key);
+      addBucket(total.dateBuckets, key, bucket);
+    }
+  }
+
+  for (const stats of legacyItems) {
     for (const field of [
       'messageCount',
       'countedMessageCount',
@@ -254,7 +341,6 @@ export function aggregateStats(items) {
     ]) {
       total[field] += Number(stats[field]) || 0;
     }
-
     for (const [key, bucket] of Object.entries(stats.dateBuckets || {})) {
       dates.add(key);
       addBucket(total.dateBuckets, key, bucket);

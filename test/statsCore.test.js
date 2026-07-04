@@ -57,11 +57,39 @@ test('aggregateStats merges date buckets', () => {
   const second = analyzeChat([
     { mes: '世界', is_user: true, send_date: '2026-02-01' },
   ], { ignoreOpeningMessage: false });
-  const total = aggregateStats([first, second]);
+  const total = aggregateStats([
+    { characterAvatar: 'first.png', stats: first },
+    { characterAvatar: 'second.png', stats: second },
+  ]);
   assert.equal(total.chatCount, 2);
   assert.equal(total.selectedHan, 4);
   assert.equal(total.activeDays, 1);
   assert.equal(total.dateBuckets['2026-02-01'].messages, 2);
+});
+
+test('aggregateStats counts shared branch history only once', () => {
+  const shared = [
+    { mes: '第一楼', is_user: true, send_date: '2026-04-01 10:00:00' },
+    { mes: '第二楼', is_user: false, send_date: '2026-04-01 10:01:00' },
+  ];
+  const branchA = analyzeChat([
+    ...shared,
+    { mes: '甲分支', is_user: true, send_date: '2026-04-01 10:02:00' },
+  ], { ignoreOpeningMessage: false });
+  const branchB = analyzeChat([
+    ...shared,
+    { mes: '乙分支', is_user: true, send_date: '2026-04-01 10:03:00' },
+  ], { ignoreOpeningMessage: false });
+
+  const total = aggregateStats([
+    { characterAvatar: 'same.png', stats: branchA },
+    { characterAvatar: 'same.png', stats: branchB },
+  ]);
+
+  assert.equal(total.chatCount, 2);
+  assert.equal(total.countedMessageCount, 4);
+  assert.equal(total.selectedHan, countHan('第一楼第二楼甲分支乙分支'));
+  assert.equal(total.dateBuckets['2026-04-01'].messages, 4);
 });
 
 test('async analyzer falls back without changing results', async () => {

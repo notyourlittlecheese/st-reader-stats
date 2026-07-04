@@ -44,6 +44,26 @@ function heatLevel(value, max) {
   return 4;
 }
 
+function dateFromKey(key) {
+  const match = String(key || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function keyFromDate(date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function shiftDateKey(key, days) {
+  const date = dateFromKey(key) || new Date();
+  date.setDate(date.getDate() + days);
+  return keyFromDate(date);
+}
+
 export class StatsDashboard {
   constructor({ adapter, cache }) {
     this.adapter = adapter;
@@ -58,6 +78,7 @@ export class StatsDashboard {
     this.currentAnalysisController = null;
     this.currentAnalysisId = 0;
     this.dirtyChatIds = new Set();
+    this.selectedCharacterAvatar = null;
     this.settings = this.loadSettings();
   }
 
@@ -184,6 +205,13 @@ export class StatsDashboard {
   }
 
   open(tab = 'current') {
+    if (
+      tab === 'current' &&
+      !this.adapter.currentCharacter() &&
+      this.adapter.characters().length
+    ) {
+      tab = 'character';
+    }
     this.activeTab = tab;
     if (!this.root) this.createOverlay();
     this.root.hidden = false;
@@ -287,14 +315,23 @@ export class StatsDashboard {
     }
   }
 
-  async renderCharacter() {
-    const character = this.adapter.currentCharacter();
-    if (!character) {
-      this.content().innerHTML = this.emptyView('当前没有选中单人角色', '群聊暂不纳入角色级索引。');
+  async renderCharacter(characterOverride = null) {
+    const characters = this.adapter.characters();
+    if (!characters.length) {
+      this.content().innerHTML = this.emptyView('还没有可统计的角色', '导入角色并创建聊天后再来看看。');
       return;
     }
 
-    this.content().innerHTML = this.loadingView(`正在检查 ${escapeHtml(character.name)} 的聊天索引…`);
+    const current = this.adapter.currentCharacter();
+    const character = characterOverride ||
+      characters.find(item => item.avatar === this.selectedCharacterAvatar) ||
+      current ||
+      characters[0];
+    this.selectedCharacterAvatar = character.avatar;
+
+    this.content().innerHTML = this.characterToolbar(characters, character.avatar) +
+      this.loadingView(`正在检查 ${escapeHtml(character.name)} 的聊天索引…`);
+    this.bindCharacterSelector(characters);
     try {
       this.abortController?.abort();
       this.abortController = new AbortController();
@@ -306,8 +343,10 @@ export class StatsDashboard {
       );
       if (this.activeTab !== 'character') return;
       const total = aggregateStats(this.characterRecords);
-      this.content().innerHTML = this.statsView(character.name, total, { showChats: true }) +
+      this.content().innerHTML = this.characterToolbar(characters, character.avatar) +
+        this.statsView(character.name, total, { showChats: true }) +
         this.chatListView(this.characterRecords);
+      this.bindCharacterSelector(characters);
       this.bindMetricToggle();
       this.bindReindex(() => this.forceCharacter(character));
     } catch (error) {
@@ -316,7 +355,10 @@ export class StatsDashboard {
   }
 
   async forceCharacter(character) {
-    this.content().innerHTML = this.loadingView(`正在重新索引 ${escapeHtml(character.name)}…`);
+    const characters = this.adapter.characters();
+    this.content().innerHTML = this.characterToolbar(characters, character.avatar) +
+      this.loadingView(`正在重新索引 ${escapeHtml(character.name)}…`);
+    this.bindCharacterSelector(characters);
     this.abortController?.abort();
     this.abortController = new AbortController();
     try {
@@ -327,13 +369,44 @@ export class StatsDashboard {
         this.abortController.signal,
       );
       const total = aggregateStats(this.characterRecords);
-      this.content().innerHTML = this.statsView(character.name, total, { showChats: true }) +
+      this.content().innerHTML = this.characterToolbar(characters, character.avatar) +
+        this.statsView(character.name, total, { showChats: true }) +
         this.chatListView(this.characterRecords);
+      this.bindCharacterSelector(characters);
       this.bindMetricToggle();
       this.bindReindex(() => this.forceCharacter(character));
     } catch (error) {
       if (error.name !== 'AbortError') this.renderError(error);
     }
+  }
+
+  characterToolbar(characters, selectedAvatar) {
+    return `
+      <section class="st-reader-stats-character-toolbar">
+        <label for="st-reader-stats-character-select">选择角色</label>
+        <select id="st-reader-stats-character-select" class="text_pole">
+          ${characters.map(character => `
+            <option value="${escapeHtml(character.avatar)}"
+              ${character.avatar === selectedAvatar ? 'selected' : ''}>
+              ${escapeHtml(character.name)}
+            </option>
+          `).join('')}
+        </select>
+        <span>无需先进入角色聊天</span>
+      </section>
+    `;
+  }
+
+  bindCharacterSelector(characters) {
+    const select = this.content().querySelector('#st-reader-stats-character-select');
+    if (!select) return;
+    select.addEventListener('change', () => {
+      const character = characters.find(item => item.avatar === select.value);
+      if (!character) return;
+      this.selectedCharacterAvatar = character.avatar;
+      this.characterRecords = [];
+      this.renderCharacter(character);
+    });
   }
 
   async renderGlobal(force = false) {
@@ -430,7 +503,7 @@ export class StatsDashboard {
       let record;
       if (
         cached &&
-        cached.schemaVersion === 1 &&
+        cached.schemaVersion === 2 &&
         cached.fingerprint === descriptor.fingerprint
       ) {
         record = cached;
@@ -482,6 +555,7 @@ export class StatsDashboard {
         <div class="st-reader-stats-note">
           “选中内容”只计算每层当前采用的 swipe；“去重生成”会计算全部 swipe，
           连续重复片段不再次计数。
+          ${showChats ? '同一角色的分支聊天会按消息节点合并，共享历史只计一次。' : ''}
         </div>
       </section>
       ${this.heatmapView(stats)}
@@ -503,12 +577,20 @@ export class StatsDashboard {
       Object.keys(stats.dateBuckets || {}).map(key => Number(key.slice(0, 4))),
     )).filter(Boolean).sort((a, b) => b - a);
     const currentYear = years[0] || new Date().getFullYear();
+    const lastDate = stats.lastDate || keyFromDate(new Date());
+    const firstDate = stats.firstDate || lastDate;
+    const currentMonth = lastDate.slice(0, 7);
+    const rangeStart = firstDate > shiftDateKey(lastDate, -29)
+      ? firstDate
+      : shiftDateKey(lastDate, -29);
     return `
       <section class="st-reader-stats-section st-reader-stats-heatmap-section"
         data-buckets="${escapeHtml(JSON.stringify(stats.dateBuckets || {}))}"
-        data-year="${currentYear}">
+        data-year="${currentYear}"
+        data-first-date="${firstDate}"
+        data-last-date="${lastDate}">
         <div class="st-reader-stats-section-title">
-          <h3>全局热力图</h3>
+          <h3>日期热力图</h3>
           <div class="st-reader-stats-heatmap-controls">
             <select class="text_pole st-reader-stats-metric">
               <option value="selectedHan">选中内容汉字</option>
@@ -516,14 +598,29 @@ export class StatsDashboard {
               <option value="messages">消息数</option>
               <option value="rerolls">Reroll 次数</option>
             </select>
+            <select class="text_pole st-reader-stats-view-mode">
+              <option value="year">年度</option>
+              <option value="month">月份</option>
+              <option value="range">自定义时间</option>
+            </select>
             <select class="text_pole st-reader-stats-year">
               ${(years.length ? years : [currentYear]).map(year =>
                 `<option value="${year}">${year}</option>`
               ).join('')}
             </select>
+            <input class="text_pole st-reader-stats-month" type="month"
+              value="${currentMonth}" hidden>
+            <div class="st-reader-stats-range-controls" hidden>
+              <input class="text_pole st-reader-stats-range-start" type="date"
+                value="${rangeStart}">
+              <span>至</span>
+              <input class="text_pole st-reader-stats-range-end" type="date"
+                value="${lastDate}">
+            </div>
           </div>
         </div>
         <div class="st-reader-stats-heatmap"></div>
+        <div class="st-reader-stats-day-detail">点按日期查看当天数据</div>
         <div class="st-reader-stats-legend">
           <span>少</span><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><span>多</span>
         </div>
@@ -531,18 +628,14 @@ export class StatsDashboard {
     `;
   }
 
-  drawHeatmap(container, buckets, year, metric) {
+  drawYearHeatmap(container, buckets, year, metric) {
     const first = new Date(year, 0, 1);
     const start = new Date(first);
     start.setDate(first.getDate() - first.getDay());
     const end = new Date(year, 11, 31);
     const days = [];
     for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
-      const key = [
-        cursor.getFullYear(),
-        String(cursor.getMonth() + 1).padStart(2, '0'),
-        String(cursor.getDate()).padStart(2, '0'),
-      ].join('-');
+      const key = keyFromDate(cursor);
       days.push({
         key,
         inYear: cursor.getFullYear() === Number(year),
@@ -562,8 +655,13 @@ export class StatsDashboard {
         ${weeks.map(week => `
           <div class="st-reader-stats-week">
             ${week.map(day => `
-              <i class="level-${day.inYear ? heatLevel(day.value, max) : 'empty'}"
-                title="${day.inYear ? `${day.key}：${formatNumber(day.value)}` : ''}"></i>
+              ${day.inYear ? `
+                <button type="button"
+                  class="st-reader-stats-heat-day level-${heatLevel(day.value, max)}"
+                  data-date="${day.key}" data-value="${day.value}"
+                  aria-label="${day.key}：${formatNumber(day.value)}"
+                  title="${day.key}：${formatNumber(day.value)}"></button>
+              ` : '<span class="st-reader-stats-heat-day level-empty"></span>'}
             `).join('')}
           </div>
         `).join('')}
@@ -571,16 +669,109 @@ export class StatsDashboard {
     `;
   }
 
+  drawCalendarHeatmap(container, buckets, startKey, endKey, metric) {
+    let start = dateFromKey(startKey);
+    let end = dateFromKey(endKey);
+    if (!start || !end) return;
+    if (start > end) [start, end] = [end, start];
+
+    const values = [];
+    for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+      values.push(bucketValue(buckets[keyFromDate(cursor)], metric));
+    }
+    const max = Math.max(0, ...values);
+    const months = [];
+    const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    const finalMonth = new Date(end.getFullYear(), end.getMonth(), 1);
+
+    while (cursor <= finalMonth) {
+      const year = cursor.getFullYear();
+      const month = cursor.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const cells = Array.from({ length: cursor.getDay() }, () =>
+        '<span class="st-reader-stats-calendar-day empty"></span>'
+      );
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month, day);
+        const key = keyFromDate(date);
+        const inRange = date >= start && date <= end;
+        const value = bucketValue(buckets[key], metric);
+        cells.push(inRange ? `
+          <button type="button"
+            class="st-reader-stats-calendar-day level-${heatLevel(value, max)}"
+            data-date="${key}" data-value="${value}"
+            aria-label="${key}：${formatNumber(value)}"
+            title="${key}：${formatNumber(value)}">${day}</button>
+        ` : '<span class="st-reader-stats-calendar-day muted"></span>');
+      }
+
+      months.push(`
+        <article class="st-reader-stats-month-card">
+          <h4>${year} 年 ${month + 1} 月</h4>
+          <div class="st-reader-stats-calendar-grid">
+            ${['日', '一', '二', '三', '四', '五', '六']
+              .map(label => `<span class="weekday">${label}</span>`).join('')}
+            ${cells.join('')}
+          </div>
+        </article>
+      `);
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    container.innerHTML = `<div class="st-reader-stats-months">${months.join('')}</div>`;
+  }
+
   bindMetricToggle() {
     const section = this.content().querySelector('.st-reader-stats-heatmap-section');
     if (!section) return;
     const buckets = JSON.parse(section.dataset.buckets || '{}');
     const metric = section.querySelector('.st-reader-stats-metric');
+    const viewMode = section.querySelector('.st-reader-stats-view-mode');
     const year = section.querySelector('.st-reader-stats-year');
+    const month = section.querySelector('.st-reader-stats-month');
+    const rangeControls = section.querySelector('.st-reader-stats-range-controls');
+    const rangeStart = section.querySelector('.st-reader-stats-range-start');
+    const rangeEnd = section.querySelector('.st-reader-stats-range-end');
     const target = section.querySelector('.st-reader-stats-heatmap');
-    const redraw = () => this.drawHeatmap(target, buckets, Number(year.value), metric.value);
+    const detail = section.querySelector('.st-reader-stats-day-detail');
+    const redraw = () => {
+      year.hidden = viewMode.value !== 'year';
+      month.hidden = viewMode.value !== 'month';
+      rangeControls.hidden = viewMode.value !== 'range';
+
+      if (viewMode.value === 'year') {
+        this.drawYearHeatmap(target, buckets, Number(year.value), metric.value);
+      } else if (viewMode.value === 'month') {
+        if (!month.value) return;
+        const start = `${month.value}-01`;
+        const startDate = dateFromKey(start);
+        const end = keyFromDate(new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0));
+        this.drawCalendarHeatmap(target, buckets, start, end, metric.value);
+      } else {
+        if (!rangeStart.value || !rangeEnd.value) return;
+        this.drawCalendarHeatmap(
+          target,
+          buckets,
+          rangeStart.value,
+          rangeEnd.value,
+          metric.value,
+        );
+      }
+      detail.textContent = '点按日期查看当天数据';
+    };
+    target.addEventListener('click', event => {
+      const day = event.target.closest('[data-date]');
+      if (!day) return;
+      const metricLabel = metric.options[metric.selectedIndex]?.textContent || '';
+      detail.textContent = `${day.dataset.date} · ${metricLabel}：${formatNumber(day.dataset.value)}`;
+    });
     metric.addEventListener('change', redraw);
+    viewMode.addEventListener('change', redraw);
     year.addEventListener('change', redraw);
+    month.addEventListener('change', redraw);
+    rangeStart.addEventListener('change', redraw);
+    rangeEnd.addEventListener('change', redraw);
     redraw();
   }
 
