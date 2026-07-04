@@ -22,6 +22,38 @@ export class SillyTavernChatAdapter {
     return this.context().chat || [];
   }
 
+  currentGroupId() {
+    const context = this.context();
+    return context.groupId ?? context.selectedGroup ?? null;
+  }
+
+  hasCurrentChat() {
+    const context = this.context();
+    return Boolean(context.chatId && (this.currentCharacter() || this.currentGroupId()));
+  }
+
+  async loadCurrentChat(signal) {
+    const context = this.context();
+    const chatId = context.chatId;
+    if (!chatId) return this.currentChat();
+
+    const groupId = this.currentGroupId();
+    if (groupId) {
+      const chat = await this.post('/api/chats/group/get', {
+        id: String(chatId).replace(/\.jsonl$/i, ''),
+      }, signal);
+      return Array.isArray(chat) && chat.length ? chat : this.currentChat();
+    }
+
+    const character = this.currentCharacter();
+    if (!character) return this.currentChat();
+    const chat = await this.post('/api/chats/get', {
+      avatar_url: character.avatar,
+      file_name: String(chatId).replace(/\.jsonl$/i, ''),
+    }, signal);
+    return Array.isArray(chat) && chat.length ? chat : this.currentChat();
+  }
+
   currentCharacter() {
     const { characters, characterId } = this.context();
     if (characterId === undefined || characterId === null) return null;

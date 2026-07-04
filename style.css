@@ -253,7 +253,7 @@ body.st-reader-stats-open {
   display: block;
   min-width: 13px;
   padding: 0;
-  background: rgb(255 255 255 / 7%);
+  background: color-mix(in srgb, var(--SmartThemeBodyColor, #eee) 10%, transparent);
   border: 0;
   border-radius: 2px;
 }
@@ -271,8 +271,10 @@ body.st-reader-stats-open {
 .st-reader-stats-calendar-day.level-4,
 .st-reader-stats-legend i.l4 { background: #880e4f; }
 .st-reader-stats-heat-day.level-0,
-.st-reader-stats-calendar-day.level-0 { background: rgb(255 255 255 / 7%); }
-.st-reader-stats-heat-day.level-empty { opacity: .15; }
+.st-reader-stats-calendar-day.level-0 {
+  background: color-mix(in srgb, var(--SmartThemeBodyColor, #eee) 10%, transparent);
+}
+.st-reader-stats-heat-day.level-empty { opacity: .35; }
 
 .st-reader-stats-day-detail {
   min-height: 34px;

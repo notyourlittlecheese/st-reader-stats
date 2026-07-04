@@ -207,7 +207,7 @@ export class StatsDashboard {
   open(tab = 'current') {
     if (
       tab === 'current' &&
-      !this.adapter.currentCharacter() &&
+      !this.adapter.hasCurrentChat() &&
       this.adapter.characters().length
     ) {
       tab = 'character';
@@ -278,6 +278,13 @@ export class StatsDashboard {
 
   async renderCurrent() {
     const character = this.adapter.currentCharacter();
+    if (!this.adapter.hasCurrentChat()) {
+      this.content().innerHTML = this.emptyView(
+        '当前没有打开聊天',
+        '请切换到“当前角色”选择角色，或进入一个聊天后再看当前聊天统计。',
+      );
+      return;
+    }
     if (!this.currentDirty && this.currentStats) {
       this.content().innerHTML = this.statsView(
         character ? `${character.name} · 当前聊天` : '当前聊天',
@@ -295,7 +302,7 @@ export class StatsDashboard {
 
     try {
       const stats = await analyzeChatAsync(
-        this.adapter.currentChat(),
+        await this.adapter.loadCurrentChat(this.currentAnalysisController.signal),
         this.settings,
         { signal: this.currentAnalysisController.signal },
       );
