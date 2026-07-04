@@ -510,7 +510,7 @@ export class StatsDashboard {
       let record;
       if (
         cached &&
-        cached.schemaVersion === 2 &&
+        cached.schemaVersion === 3 &&
         cached.fingerprint === descriptor.fingerprint
       ) {
         record = cached;

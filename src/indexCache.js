@@ -65,7 +65,7 @@ export class StatsIndex {
       id: this.id(descriptor),
       stats,
       indexedAt: Date.now(),
-      schemaVersion: 2,
+      schemaVersion: 3,
     };
     await this.transaction('readwrite', store => store.put(record));
     return record;

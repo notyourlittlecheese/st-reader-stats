@@ -1,3 +1,7 @@
+function chatFileId(value) {
+  return String(value ?? '').replace(/\.jsonl$/i, '');
+}
+
 export class SillyTavernChatAdapter {
   constructor() {
     this.requestHeaders = null;
@@ -40,7 +44,7 @@ export class SillyTavernChatAdapter {
     const groupId = this.currentGroupId();
     if (groupId) {
       const chat = await this.post('/api/chats/group/get', {
-        id: String(chatId).replace(/\.jsonl$/i, ''),
+        id: chatFileId(chatId),
       }, signal);
       return Array.isArray(chat) && chat.length ? chat : this.currentChat();
     }
@@ -49,7 +53,7 @@ export class SillyTavernChatAdapter {
     if (!character) return this.currentChat();
     const chat = await this.post('/api/chats/get', {
       avatar_url: character.avatar,
-      file_name: String(chatId).replace(/\.jsonl$/i, ''),
+      file_name: chatFileId(chatId),
     }, signal);
     return Array.isArray(chat) && chat.length ? chat : this.currentChat();
   }
@@ -65,7 +69,7 @@ export class SillyTavernChatAdapter {
     const character = this.currentCharacter();
     const chatId = this.context().chatId;
     if (!character || !chatId) return null;
-    return `${character.avatar}::${String(chatId).replace(/\.jsonl$/i, '')}`;
+    return `${character.avatar}::${chatFileId(chatId)}`;
   }
 
   characters() {
@@ -105,9 +109,9 @@ export class SillyTavernChatAdapter {
       characterId: character.id,
       characterName: character.name,
       characterAvatar: character.avatar,
-      fileName: item.file_name,
+      fileName: chatFileId(item.file_name ?? item.file_id),
       fileSize: item.file_size ?? '',
-      messageCount: Number(item.message_count) || 0,
+      messageCount: Number(item.message_count ?? item.chat_items) || 0,
       lastMessage: item.last_mes ?? '',
       preview: item.preview_message ?? '',
       fingerprint: [
@@ -119,9 +123,16 @@ export class SillyTavernChatAdapter {
   }
 
   async loadChat(descriptor, signal) {
-    return this.post('/api/chats/get', {
+    const chat = await this.post('/api/chats/get', {
       avatar_url: descriptor.characterAvatar,
-      file_name: descriptor.fileName,
+      file_name: chatFileId(descriptor.fileName),
     }, signal);
+    if (!Array.isArray(chat)) {
+      throw new Error(`聊天文件读取失败：${descriptor.fileName || '未知文件'}`);
+    }
+    if (!chat.length && descriptor.messageCount > 0) {
+      throw new Error(`聊天文件为空：${descriptor.fileName || '未知文件'}`);
+    }
+    return chat;
   }
 }

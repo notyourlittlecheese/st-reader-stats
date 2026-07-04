@@ -47,3 +47,54 @@ test('loadCurrentChat fetches a complete group chat file', async () => {
   assert.deepEqual(request.body, { id: 'group-chat' });
   assert.equal(chat.length, 2);
 });
+
+test('list and load normalize search results with a jsonl suffix', async () => {
+  globalThis.SillyTavern = { getContext: () => ({}) };
+  const adapter = new SillyTavernChatAdapter();
+  const requests = [];
+  adapter.post = async (path, body) => {
+    requests.push({ path, body });
+    if (path === '/api/chats/search') {
+      return [{
+        file_name: 'branched-chat.jsonl',
+        file_size: '12 KB',
+        message_count: 42,
+        last_mes: 123,
+      }];
+    }
+    return [{ chat_metadata: {} }, { mes: '完整聊天' }];
+  };
+
+  const [descriptor] = await adapter.listCharacterChats({
+    id: 3,
+    name: '角色',
+    avatar: 'character.png',
+  });
+  assert.equal(descriptor.fileName, 'branched-chat');
+  assert.equal(descriptor.messageCount, 42);
+
+  const chat = await adapter.loadChat(descriptor);
+  assert.equal(chat.length, 2);
+  assert.deepEqual(requests.at(-1), {
+    path: '/api/chats/get',
+    body: {
+      avatar_url: 'character.png',
+      file_name: 'branched-chat',
+    },
+  });
+});
+
+test('loadChat rejects an empty object instead of caching zero statistics', async () => {
+  globalThis.SillyTavern = { getContext: () => ({}) };
+  const adapter = new SillyTavernChatAdapter();
+  adapter.post = async () => ({});
+
+  await assert.rejects(
+    () => adapter.loadChat({
+      characterAvatar: 'character.png',
+      fileName: 'missing-chat',
+      messageCount: 100,
+    }),
+    /聊天文件读取失败/,
+  );
+});
