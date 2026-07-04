@@ -77,6 +77,7 @@ export class StatsDashboard {
     this.abortController = null;
     this.currentAnalysisController = null;
     this.currentAnalysisId = 0;
+    this.openRequestId = 0;
     this.dirtyChatIds = new Set();
     this.selectedCharacterAvatar = null;
     this.settings = this.loadSettings();
@@ -118,7 +119,11 @@ export class StatsDashboard {
       <i class="fa-solid fa-chart-simple"></i>
       <span>阅读统计</span>
     `;
-    button.addEventListener('click', () => this.open('current'));
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.open('current');
+    });
     button.addEventListener('keydown', event => {
       if (event.key === 'Enter' || event.key === ' ') this.open('current');
     });
@@ -148,8 +153,8 @@ export class StatsDashboard {
           <label for="st-reader-stats-window">Swipe 重复片段阈值</label>
           <input id="st-reader-stats-window" class="text_pole" type="number" min="6" max="40">
           <div class="st-reader-stats-settings-actions">
-            <button id="st-reader-stats-open" class="menu_button">打开统计</button>
-            <button id="st-reader-stats-clear" class="menu_button">清空索引</button>
+            <button id="st-reader-stats-open" class="menu_button" type="button">打开统计</button>
+            <button id="st-reader-stats-clear" class="menu_button" type="button">清空索引</button>
           </div>
         </div>
       </div>
@@ -171,7 +176,11 @@ export class StatsDashboard {
       this.saveSettings();
       this.invalidateAll();
     });
-    panel.querySelector('#st-reader-stats-open').addEventListener('click', () => this.open('current'));
+    panel.querySelector('#st-reader-stats-open').addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.open('current');
+    });
     panel.querySelector('#st-reader-stats-clear').addEventListener('click', async () => {
       await this.cache.clear();
       this.globalRecords = [];
@@ -205,22 +214,39 @@ export class StatsDashboard {
   }
 
   open(tab = 'current') {
-    if (
-      tab === 'current' &&
-      !this.adapter.hasCurrentChat() &&
-      this.adapter.characters().length
-    ) {
-      tab = 'character';
-    }
-    this.activeTab = tab;
     if (!this.root) this.createOverlay();
     this.root.hidden = false;
     document.body.classList.add('st-reader-stats-open');
     this.renderShell();
-    this.activate(tab);
+
+    // Paint the overlay before reading chats. This also keeps the mobile
+    // settings drawer from swallowing the visual response to the tap.
+    const requestId = ++this.openRequestId;
+    const activateAfterPaint = () => {
+      if (requestId !== this.openRequestId || !this.root || this.root.hidden) return;
+      try {
+        if (
+          tab === 'current' &&
+          !this.adapter.hasCurrentChat() &&
+          this.adapter.characters().length
+        ) {
+          tab = 'character';
+        }
+        this.activeTab = tab;
+        this.activate(tab);
+      } catch (error) {
+        this.renderError(error);
+      }
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(activateAfterPaint);
+    } else {
+      setTimeout(activateAfterPaint, 0);
+    }
   }
 
   close() {
+    this.openRequestId++;
     this.abortController?.abort();
     this.currentAnalysisController?.abort();
     if (this.root) this.root.hidden = true;
@@ -246,12 +272,12 @@ export class StatsDashboard {
             <h2>阅读统计</h2>
             <p>选中内容与全部 Swipe 去重生成量分开计算</p>
           </div>
-          <button class="st-reader-stats-icon-button" data-action="close" aria-label="关闭">×</button>
+          <button class="st-reader-stats-icon-button" data-action="close" type="button" aria-label="关闭">×</button>
         </header>
         <nav class="st-reader-stats-tabs">
-          <button data-tab="current">当前聊天</button>
-          <button data-tab="character">当前角色</button>
-          <button data-tab="global">全局总览</button>
+          <button data-tab="current" type="button">当前聊天</button>
+          <button data-tab="character" type="button">当前角色</button>
+          <button data-tab="global" type="button">全局总览</button>
         </nav>
         <main class="st-reader-stats-content"></main>
       </section>

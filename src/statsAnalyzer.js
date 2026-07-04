@@ -1,6 +1,7 @@
 import { analyzeChat } from './statsCore.js';
 
 let nextRequestId = 1;
+const WORKER_TIMEOUT_MS = 15000;
 
 function nextPaint() {
   return new Promise(resolve => {
@@ -29,8 +30,10 @@ export async function analyzeChatAsync(chat, options, { signal } = {}) {
     const id = nextRequestId++;
     let worker;
     let settled = false;
+    let watchdog;
 
     const cleanup = () => {
+      clearTimeout(watchdog);
       signal?.removeEventListener('abort', onAbort);
       worker?.terminate();
     };
@@ -63,6 +66,11 @@ export async function analyzeChatAsync(chat, options, { signal } = {}) {
     }
 
     signal?.addEventListener('abort', onAbort, { once: true });
+    // Some mobile WebViews construct module workers successfully but never
+    // dispatch a message or an error. Do not leave the dashboard spinning.
+    watchdog = setTimeout(() => {
+      runFallback().catch(reject);
+    }, WORKER_TIMEOUT_MS);
     worker.addEventListener('message', event => {
       if (event.data?.id !== id) return;
       if (settled) return;

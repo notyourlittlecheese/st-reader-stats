@@ -5,9 +5,11 @@ body.st-reader-stats-open {
 .st-reader-stats-overlay {
   position: fixed;
   inset: 0;
-  z-index: 10020;
+  z-index: 2147483000 !important;
   display: grid;
   place-items: center;
+  isolation: isolate;
+  pointer-events: auto;
   padding: 20px;
   background: rgb(0 0 0 / 65%);
   backdrop-filter: blur(5px);
@@ -462,6 +464,7 @@ body.st-reader-stats-open {
   .st-reader-stats-dialog {
     width: 100%;
     height: 100%;
+    height: 100dvh;
     border: 0;
     border-radius: 0;
   }
