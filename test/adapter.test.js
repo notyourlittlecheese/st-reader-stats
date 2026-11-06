@@ -3,6 +3,19 @@ import test from 'node:test';
 
 import { SillyTavernChatAdapter } from '../src/sillyTavernChatAdapter.js';
 
+test('scan skips known empty cards but includes unknown, current and recently changed cards', () => {
+  globalThis.SillyTavern = { getContext: () => ({ characterId: 3, characters: [
+    { avatar: 'empty.png', chat_size: 0 },
+    { avatar: 'played.png', chat_size: 100 },
+    { avatar: 'unknown.png' },
+    { avatar: 'current.png', chat_size: 0 },
+    { avatar: 'changed.png', chat_size: 0 },
+  ] }) };
+  const adapter = new SillyTavernChatAdapter();
+  assert.deepEqual(adapter.scanCandidates({ dirtyIds: ['changed.png::new'] }).map(c => c.avatar), ['played.png', 'unknown.png', 'current.png', 'changed.png']);
+  assert.equal(adapter.scanCandidates({ force: true }).length, 5);
+});
+
 test('loadCurrentChat fetches a complete solo chat file', async () => {
   const context = {
     chatId: 'long-chat',

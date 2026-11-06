@@ -86,10 +86,26 @@ body.st-reader-stats-open {
 
 .st-reader-stats-tabs {
   display: flex;
+  overflow-x: auto;
+  flex-shrink: 0;
   gap: 6px;
   padding: 0 26px;
   border-bottom: 1px solid var(--SmartThemeBorderColor, #555);
 }
+
+.st-reader-stats-year-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 16px;
+}
+
+.st-reader-stats-year-grid h2 { overflow-wrap: anywhere; }
+.st-reader-stats-editor details { margin: 16px 0; }
+.st-reader-stats-editor summary { cursor: pointer; overflow-wrap: anywhere; }
+.st-reader-stats-editor label { display: block; margin: 10px 0; }
+.st-reader-stats-editor input[type="text"] { width: 100%; box-sizing: border-box; }
+.st-reader-stats-editor button { cursor: pointer; padding: 8px 12px; margin: 4px 0; }
+.st-reader-stats-rule { padding: 12px; margin: 12px 0; border: 1px solid var(--SmartThemeBorderColor, #888); border-radius: 10px; overflow-wrap: anywhere; }
 
 .st-reader-stats-tabs button {
   padding: 11px 17px;

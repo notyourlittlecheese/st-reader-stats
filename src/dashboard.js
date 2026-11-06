@@ -3,6 +3,8 @@ import {
   DEFAULT_OPTIONS,
 } from './statsCore.js';
 import { analyzeChatAsync } from './statsAnalyzer.js';
+import { groupRecords, recordKey } from './collections.js';
+import { renderCollections, renderAnnual } from './summaryViews.js';
 
 const SETTINGS_KEY = 'st-reader-stats.settings.v1';
 
@@ -210,6 +212,7 @@ export class StatsDashboard {
     this.currentDirty = true;
     this.currentStats = null;
     this.characterRecords = [];
+    this.globalRecords = [];
     if (this.root && !this.root.hidden) this.activate(this.activeTab);
   }
 
@@ -278,6 +281,8 @@ export class StatsDashboard {
           <button data-tab="current" type="button">当前聊天</button>
           <button data-tab="character" type="button">当前角色</button>
           <button data-tab="global" type="button">全局总览</button>
+          <button data-tab="annual" type="button">年度总结</button>
+          <button data-tab="collections" type="button">分组与备注</button>
         </nav>
         <main class="st-reader-stats-content"></main>
       </section>
@@ -295,6 +300,9 @@ export class StatsDashboard {
   }
 
   activate(tab) {
+    this.openRequestId++;
+    this.abortController?.abort();
+    this.currentAnalysisController?.abort();
     this.activeTab = tab;
     this.root.querySelectorAll('[data-tab]').forEach(button => {
       button.classList.toggle('active', button.dataset.tab === tab);
@@ -302,6 +310,7 @@ export class StatsDashboard {
     if (tab === 'current') this.renderCurrent();
     if (tab === 'character') this.renderCharacter();
     if (tab === 'global') this.renderGlobal();
+    if (tab === 'annual' || tab === 'collections') this.renderGlobal(false, tab);
   }
 
   content() {
@@ -448,19 +457,20 @@ export class StatsDashboard {
     });
   }
 
-  async renderGlobal(force = false) {
-    const characters = this.adapter.characters();
+  async renderGlobal(force = false, target = 'global') {
+    const allCharacters = this.adapter.characters();
+    const characters = this.adapter.scanCandidates({ force, dirtyIds: this.dirtyChatIds });
     if (!characters.length) {
-      this.content().innerHTML = this.emptyView('还没有可统计的角色', '导入角色并创建聊天后再来看看。');
+      this.showGlobalPage([], target);
       return;
     }
 
     if (this.globalRecords.length && !force) {
-      this.renderGlobalResults(this.globalRecords);
+      this.showGlobalPage(this.globalRecords, target);
       return;
     }
 
-    this.content().innerHTML = this.loadingView(`准备扫描 ${characters.length} 个角色…`);
+    this.content().innerHTML = this.loadingView(`检查 ${characters.length} 张有聊天或待确认的卡，跳过 ${allCharacters.length - characters.length} 张空卡…`);
     this.abortController?.abort();
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
@@ -480,32 +490,28 @@ export class StatsDashboard {
         allRecords.push(...records);
       }
       this.globalRecords = allRecords;
-      if (this.activeTab === 'global') this.renderGlobalResults(allRecords);
+      if (!signal.aborted && this.activeTab === target) this.showGlobalPage(allRecords, target);
     } catch (error) {
       if (error.name !== 'AbortError') this.renderError(error);
     }
   }
 
+  showGlobalPage(records, target) {
+    if (target === 'annual') return renderAnnual(this, records);
+    if (target === 'collections') return renderCollections(this, records);
+    this.renderGlobalResults(records);
+  }
+
   renderGlobalResults(records) {
     const total = aggregateStats(records);
-    const byCharacter = new Map();
-    for (const record of records) {
-      const key = record.characterAvatar;
-      if (!byCharacter.has(key)) {
-        byCharacter.set(key, {
-          name: record.characterName,
-          records: [],
-        });
-      }
-      byCharacter.get(key).records.push(record);
-    }
+    const groups = groupRecords(records, this.settings.collections);
 
-    const characterCards = Array.from(byCharacter.values())
-      .map(group => ({ ...group, stats: aggregateStats(group.records) }))
+    const characterCards = groups
       .sort((a, b) => b.stats.selectedHan - a.stats.selectedHan)
       .map(group => `
         <article class="st-reader-stats-character-card">
           <h4>${escapeHtml(group.name)}</h4>
+          <p>${escapeHtml(this.settings.collections?.notes?.[group.key] || '')}</p>
           <span>${formatNumber(group.stats.chatCount)} 个聊天</span>
           <strong>${formatNumber(group.stats.selectedHan)} 字</strong>
           <small>去重生成 ${formatNumber(group.stats.uniqueSwipeHan)} 字</small>
@@ -513,7 +519,7 @@ export class StatsDashboard {
       `).join('');
 
     this.content().innerHTML = this.statsView(
-      `全部角色 · ${byCharacter.size} 个角色`,
+      `全部角色 · ${groups.length} 个统计组`,
       total,
       { showChats: true },
     ) + `
@@ -542,7 +548,7 @@ export class StatsDashboard {
       let record;
       if (
         cached &&
-        cached.schemaVersion === 3 &&
+        cached.schemaVersion === 4 &&
         cached.fingerprint === descriptor.fingerprint
       ) {
         record = cached;
@@ -822,7 +828,7 @@ export class StatsDashboard {
   chatListView(records) {
     const rows = records.map(record => `
       <tr>
-        <td title="${escapeHtml(record.fileName)}">${escapeHtml(record.fileName)}</td>
+        <td title="${escapeHtml(record.fileName)}">${escapeHtml(record.fileName)}<small style="display:block">${escapeHtml(this.settings.collections?.chats?.[recordKey(record)]?.note || '')}</small></td>
         <td>${formatNumber(record.stats.countedMessageCount)}</td>
         <td>${formatNumber(record.stats.selectedHan)}</td>
         <td>${formatNumber(record.stats.uniqueSwipeHan)}</td>

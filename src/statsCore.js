@@ -239,6 +239,8 @@ export function analyzeChat(chat, options = {}) {
         nodeKey: messageNodeKey(message, messageIndex),
         messageIndex,
         isUser: Boolean(message.is_user),
+        sentDay: messageDay,
+        sentHour: typeof message.send_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(message.send_date) ? null : parseDate(message.send_date)?.getHours() ?? null,
         selectedHan: selectedCount,
         uniqueSwipeHan: unique.total,
         rerollCount: rerolls,

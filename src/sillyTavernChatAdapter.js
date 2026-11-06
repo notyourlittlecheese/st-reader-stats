@@ -83,7 +83,15 @@ export class SillyTavernChatAdapter {
       id: index,
       name: character?.name || character?.data?.name || `角色 ${index + 1}`,
       avatar: character?.avatar || character?.data?.avatar || '',
+      chatSize: typeof character?.chat_size === 'number' ? character.chat_size : null,
     };
+  }
+
+  scanCandidates({ force = false, dirtyIds = [] } = {}) {
+    const currentAvatar = this.currentCharacter()?.avatar;
+    const dirtyAvatars = new Set([...dirtyIds].map(id => id.split('::')[0]));
+    return this.characters().filter(character => force || character.chatSize !== 0 ||
+      character.avatar === currentAvatar || dirtyAvatars.has(character.avatar));
   }
 
   async post(path, body, signal) {
