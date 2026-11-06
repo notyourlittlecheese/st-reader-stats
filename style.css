@@ -12,7 +12,8 @@ body.st-reader-stats-open {
   pointer-events: auto;
   padding: 20px;
   background: rgb(0 0 0 / 65%);
-  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
 }
 
 .st-reader-stats-overlay[hidden] {
@@ -29,10 +30,19 @@ body.st-reader-stats-open {
   flex-direction: column;
   overflow: hidden;
   color: var(--SmartThemeBodyColor, #eee);
-  background: var(--SmartThemeBlurTintColor, #202124);
+  /* A solid fallback protects readability when backdrop blur is unavailable. */
+  background: var(--srs-surface, #202124) !important;
   border: 1px solid var(--SmartThemeBorderColor, #555);
   border-radius: 16px;
   box-shadow: 0 24px 80px rgb(0 0 0 / 45%);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .st-reader-stats-dialog {
+    background: var(--srs-frosted-surface, rgba(32, 33, 36, .96)) !important;
+    -webkit-backdrop-filter: blur(28px);
+    backdrop-filter: blur(28px);
+  }
 }
 
 .st-reader-stats-header {

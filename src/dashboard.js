@@ -282,6 +282,12 @@ export class StatsDashboard {
         <main class="st-reader-stats-content"></main>
       </section>
     `;
+    // Follow the theme's text contrast without inheriting its transparent tint.
+    const dialog = this.root.querySelector('.st-reader-stats-dialog');
+    const channels = getComputedStyle(dialog).color.match(/[\d.]+/g)?.map(Number);
+    const lightText = !channels || (.2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2]) > 140;
+    dialog.style.setProperty('--srs-surface', lightText ? '#202124' : '#f7f5f3');
+    dialog.style.setProperty('--srs-frosted-surface', lightText ? 'rgba(32, 33, 36, .96)' : 'rgba(247, 245, 243, .96)');
     this.root.querySelector('[data-action="close"]').addEventListener('click', () => this.close());
     this.root.querySelectorAll('[data-tab]').forEach(button => {
       button.addEventListener('click', () => this.activate(button.dataset.tab));
