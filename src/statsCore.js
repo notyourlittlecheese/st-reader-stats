@@ -60,6 +60,13 @@ export function dateKey(value) {
   return `${year}-${month}-${day}`;
 }
 
+export function sentMinute(value) {
+  // A pure date does not imply that the user was chatting at midnight.
+  if (typeof value === 'string' && !/^\d{10,}$/.test(value.trim()) && !/\d{1,2}[:h]\d{2}/i.test(value)) return null;
+  const date = parseDate(value);
+  return date ? date.getHours() * 60 + date.getMinutes() : null;
+}
+
 function normalizedCharacters(value, options) {
   return Array.from(cleanContent(value, options).normalize('NFKC').toLowerCase())
     .filter(char => !/\s/u.test(char));
@@ -240,7 +247,8 @@ export function analyzeChat(chat, options = {}) {
         messageIndex,
         isUser: Boolean(message.is_user),
         sentDay: messageDay,
-        sentHour: typeof message.send_date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(message.send_date) ? null : parseDate(message.send_date)?.getHours() ?? null,
+        sentHour: sentMinute(message.send_date) === null ? null : Math.floor(sentMinute(message.send_date) / 60),
+        sentMinute: sentMinute(message.send_date),
         selectedHan: selectedCount,
         uniqueSwipeHan: unique.total,
         rerollCount: rerolls,

@@ -4,7 +4,9 @@ import {
 } from './statsCore.js';
 import { analyzeChatAsync } from './statsAnalyzer.js';
 import { groupRecords, recordKey } from './collections.js';
-import { renderCollections, renderAnnual } from './summaryViews.js';
+import { renderCollections } from './summaryViews.js';
+import { openAnnualStudio } from './annualStudio.js';
+import { hexColor, mixHex } from './artRenderer.js';
 
 const SETTINGS_KEY = 'st-reader-stats.settings.v1';
 
@@ -249,6 +251,7 @@ export class StatsDashboard {
   }
 
   close() {
+    this.annualStudio?.dispose();
     this.openRequestId++;
     this.abortController?.abort();
     this.currentAnalysisController?.abort();
@@ -268,12 +271,14 @@ export class StatsDashboard {
   }
 
   renderShell() {
+    this.annualStudio?.dispose();
     this.root.innerHTML = `
       <section class="st-reader-stats-dialog" role="dialog" aria-modal="true" aria-label="阅读统计">
         <header class="st-reader-stats-header">
           <div>
             <h2>阅读统计</h2>
             <p>选中内容与全部 Swipe 去重生成量分开计算</p>
+            <details class="srs-theme-controls"><summary>主题色</summary><label>主色 <input type="color" data-accent-picker value="${hexColor(this.settings.accent, '#ed4777')}"></label><label>色号 <input type="text" data-accent-hex maxlength="7" value="${hexColor(this.settings.accent, '#ed4777')}" placeholder="#8172B3"></label><small data-accent-status>输入 #RRGGBB，或点色盘选择</small></details>
           </div>
           <button class="st-reader-stats-icon-button" data-action="close" type="button" aria-label="关闭">×</button>
         </header>
@@ -292,14 +297,38 @@ export class StatsDashboard {
     const channels = getComputedStyle(dialog).color.match(/[\d.]+/g)?.map(Number);
     const lightText = !channels || (.2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2]) > 140;
     dialog.style.setProperty('--srs-surface', lightText ? '#202124' : '#f7f5f3');
-    dialog.style.setProperty('--srs-frosted-surface', lightText ? 'rgba(32, 33, 36, .96)' : 'rgba(247, 245, 243, .96)');
+    dialog.style.setProperty('--srs-frosted-surface', lightText ? 'rgba(25, 26, 32, .42)' : 'rgba(249, 247, 245, .36)');
+    this.applyAccent();
+    const picker = this.root.querySelector('[data-accent-picker]');
+    const hex = this.root.querySelector('[data-accent-hex]');
+    const setAccent = value => {
+      if (!/^#[0-9a-f]{6}$/i.test(value)) { this.root.querySelector('[data-accent-status]').textContent = '请输入完整的六位色号，例如 #8172B3'; return; }
+      const previous = this.settings.accent;
+      this.settings.accent = value;
+      try { this.saveSettings(); } catch (error) { this.settings.accent = previous; this.root.querySelector('[data-accent-status]').textContent = `保存失败：${error.message}`; return; }
+      picker.value = hex.value = value;
+      this.applyAccent(); this.annualStudio?.draw();
+      this.root.querySelector('[data-accent-status]').textContent = '主题色已保存';
+    };
+    picker.addEventListener('input', () => setAccent(picker.value));
+    hex.addEventListener('change', () => setAccent(hex.value.trim()));
     this.root.querySelector('[data-action="close"]').addEventListener('click', () => this.close());
     this.root.querySelectorAll('[data-tab]').forEach(button => {
       button.addEventListener('click', () => this.activate(button.dataset.tab));
     });
   }
 
+  applyAccent() {
+    const dialog = this.root?.querySelector('.st-reader-stats-dialog');
+    if (!dialog) return;
+    const accent = hexColor(this.settings.accent, '#ed4777');
+    dialog.style.setProperty('--srs-accent', accent);
+    dialog.style.setProperty('--srs-accent-dark', mixHex(accent, '#000000', .3));
+    [0.72, 0.42, 0.08, -0.3].forEach((amount, index) => dialog.style.setProperty(`--srs-level-${index + 1}`, mixHex(accent, amount < 0 ? '#000000' : '#ffffff', Math.abs(amount))));
+  }
+
   activate(tab) {
+    this.annualStudio?.dispose();
     this.openRequestId++;
     this.abortController?.abort();
     this.currentAnalysisController?.abort();
@@ -497,7 +526,7 @@ export class StatsDashboard {
   }
 
   showGlobalPage(records, target) {
-    if (target === 'annual') return renderAnnual(this, records);
+    if (target === 'annual') return openAnnualStudio(this, records);
     if (target === 'collections') return renderCollections(this, records);
     this.renderGlobalResults(records);
   }
@@ -548,7 +577,7 @@ export class StatsDashboard {
       let record;
       if (
         cached &&
-        cached.schemaVersion === 4 &&
+        cached.schemaVersion === 5 &&
         cached.fingerprint === descriptor.fingerprint
       ) {
         record = cached;
