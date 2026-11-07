@@ -540,6 +540,7 @@ export class StatsDashboard {
       .map(group => `
         <article class="st-reader-stats-character-card">
           <h4>${escapeHtml(group.name)}</h4>
+          ${group.note ? `<p>${escapeHtml(group.note)}</p>` : ''}
           <p>${escapeHtml(this.settings.collections?.notes?.[group.key] || '')}</p>
           <span>${formatNumber(group.stats.chatCount)} 个聊天</span>
           <strong>${formatNumber(group.stats.selectedHan)} 字</strong>

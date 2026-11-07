@@ -15,7 +15,7 @@ export function renderCollections(dashboard, records) {
   dashboard.content().innerHTML = `<section class="st-reader-stats-section st-reader-stats-editor">
     <h3>我的统计分组</h3>
     <div class="srs-group-save"><button type="button" data-save>保存分组与备注</button><span role="status" data-status></span></div>
-    <p>多张卡填同一个组名即可合并；存档组名优先于角色卡组名，留空则继承。独立统计优先于组名。分组只改变展示，不修改聊天文件。</p>
+    <p>多张卡填同一个组名即可合并；未勾选独立统计时，存档组名留空则跟随整卡。勾选独立统计后，存档组名只作为显示标题，留空显示聊天名，即使同名也不合并；存档备注显示在标题下。分组不修改聊天文件。</p>
     <p>不同卡的对话分别计数；同一卡的分支历史继续去重。拆开的组分别展示，全局仍对共享历史去重，组别数字相加可能大于全局。</p>
     <p>设置保存在当前浏览器，清空索引不会删除。可导出备份，在手机导入。</p>
     <button type="button" data-export>导出分组备份</button> <label>导入备份 <input type="file" accept="application/json" data-import></label>
@@ -23,7 +23,7 @@ export function renderCollections(dashboard, records) {
       ${field('整卡归入哪个组（同名即合并）', prefs.cards?.[avatar]?.group, `data-card="${i}"`)}
       ${chats.map((record, j) => { const rule = prefs.chats?.[recordKey(record)] || {}; return `<div class="st-reader-stats-rule" data-rule="${i}:${j}">
         <strong>${esc(record.fileName)}</strong>
-        ${field('此存档单独归组（留空跟随整卡）', rule.group, 'data-group')}
+        ${field('存档组名 / 独立统计时的显示名称', rule.group, 'data-group')}
         <label><input type="checkbox" data-separate ${rule.separate ? 'checked' : ''}> 此存档独立统计</label>
         ${field('存档备注', rule.note, 'data-note')}
       </div>`; }).join('')}</details>`).join('')}
@@ -51,6 +51,7 @@ export function renderCollections(dashboard, records) {
   };
   const groups = groupRecords(records, prefs);
   host.querySelector('[data-group-list]').innerHTML = groups.map((group, i) => `<div class="st-reader-stats-rule"><h4>${esc(group.name)}</h4>
+    ${group.note ? `<p>${esc(group.note)}</p>` : ''}
     <p>${num(group.stats.selectedHan)} 字 · ${num(group.stats.countedMessageCount)} 条</p>
     ${field('统计组备注（修改后自动保存）', prefs.notes?.[group.key], `data-group-note="${i}"`)}
     <button type="button" data-view="${i}">查看本组热力图</button></div>`).join('');

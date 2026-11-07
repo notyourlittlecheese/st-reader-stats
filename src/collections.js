@@ -12,7 +12,8 @@ export function groupRecords(records, preferences = {}) {
     const name = (chat.group || card.group || '').trim();
     const key = chat.separate ? `chat:${recordKey(record)}` : name ? `group:${name}` : `card:${record.characterAvatar}`;
     if (!groups.has(key)) groups.set(key, {
-      key, name: chat.separate ? record.fileName : name || record.characterName,
+      key, name: chat.separate ? (chat.group || '').trim() || record.fileName : name || record.characterName,
+      note: chat.separate ? chat.note || '' : '',
       records: [],
     });
     groups.get(key).records.push(record);

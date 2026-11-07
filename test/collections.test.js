@@ -17,6 +17,27 @@ test('merge cards, override one save and split another without mutating records'
   delete prefs.chats[recordKey(b)];
   assert.equal(groupRecords([a, b], prefs).length, 1);
 });
+test('independent chats use custom titles and notes without merging equal names', () => {
+  const a = record('a', 'one', []), b = record('a', 'two', []);
+  const prefs = { cards: { a: { group: '整卡组' } }, chats: {
+    [recordKey(a)]: { separate: true, group: ' 同一个标题 ', note: '我的存档备注' },
+    [recordKey(b)]: { separate: true, group: '同一个标题' },
+  } };
+  const before = structuredClone(prefs);
+  const groups = groupRecords([a, b], prefs);
+  assert.equal(groups.length, 2);
+  assert.notEqual(groups[0].key, groups[1].key);
+  assert.equal(groups[0].name, '同一个标题');
+  assert.equal(groups[1].name, '同一个标题');
+  assert.equal(groups[0].note, '我的存档备注');
+  assert.deepEqual(prefs, before);
+  prefs.chats[recordKey(a)].group = '   ';
+  const fallback = groupRecords([a], prefs)[0];
+  assert.equal(fallback.name, 'one');
+  assert.equal(fallback.key, groups[0].key);
+  assert.equal(fallback.note, '我的存档备注');
+});
+
 test('year boundaries, branch dedupe, peak day and leap-day streak', () => {
   const messages = [
     { mes: '去年', is_user: true, send_date: '2023-12-31T23:59:00' },
