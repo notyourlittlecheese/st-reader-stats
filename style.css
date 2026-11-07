@@ -5,9 +5,13 @@ body.st-reader-stats-open {
 /* Blur the actual page roots as well: some mobile themes disable backdrop
    compositing, leaving transparent panels with fully legible text behind them.
    The selector stops applying immediately when the statistics panel closes. */
-body.st-reader-stats-open > :not(#st-reader-stats-root):not(script):not(style):not(link) {
+body.st-reader-stats-open > :is(#sheld, #top-bar, #top-settings-holder, #left-nav-panel, #right-nav-panel, #movingDivs) {
   filter: blur(18px) !important;
 }
+.srs-quote-options { max-height: 420px; overflow: auto; margin: 12px 0; }
+.srs-quote-options label { display: flex !important; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid #8885; border-radius: 8px; white-space: pre-wrap; }
+.srs-quote-options input { flex: 0 0 auto; margin-top: 5px; }
+#st-reader-stats-root option { background: var(--srs-surface, #fff); color: var(--SmartThemeBodyColor, #222); filter: none !important; }
 
 .srs-art-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 14px; background: var(--srs-surface, #f7f5f3); border-radius: 14px; }
 .srs-art-grid[hidden], .srs-studio-layout[hidden] { display: none; }
@@ -33,7 +37,7 @@ body.st-reader-stats-open > :not(#st-reader-stats-root):not(script):not(style):n
 .srs-studio-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 .srs-studio-layout.is-editing { grid-template-columns: minmax(0, 1.45fr) minmax(240px, 1fr); }
 .srs-stage-wrap { min-width: 0; max-width: 720px; width: 100%; margin: 0 auto; }
-.srs-stage { display: block; width: 100%; height: auto; aspect-ratio: 2 / 3; border-radius: 12px; box-shadow: 0 12px 36px #0002; touch-action: pan-y; }
+.srs-stage { display: block; width: 100%; height: auto; aspect-ratio: 1; border-radius: 12px; box-shadow: 0 12px 36px #0002; touch-action: pan-y; }
 .is-editing .srs-stage { touch-action: none; cursor: grab; }
 .srs-page-nav { display: flex; gap: 8px; align-items: center; justify-content: center; margin-top: 14px; }
 .srs-page-nav select { min-width: 0; flex: 1; }

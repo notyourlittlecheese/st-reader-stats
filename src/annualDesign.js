@@ -32,7 +32,7 @@ export function recapData(records, preferences, year, nightEnd = 6) {
     最晚时间: latest ? `${String(Math.floor(latest.minute / 60)).padStart(2, '0')}:${String(latest.minute % 60).padStart(2, '0')}` : '—:—',
     最晚日期: latest?.day || '暂无带时间的记录', 最晚角色: latest?.name || '尚无记录',
     峰值日期: peak?.[0] || '暂无记录', 峰值消息: format(peak?.[1].messages), 峰值角色: peakGroup?.name || '尚无记录',
-    连续天数: stats.longest, 摘录: '点击“换一组摘录”，从年度偏爱的真实聊天中拾起几句话。',
+    连续天数: stats.longest, 摘录: '读取一批摘录，从年度偏爱的真实聊天中挑选你想留下的话。',
   };
   return { stats, groups, favorite, latest, values };
 }
@@ -63,8 +63,16 @@ export function defaultPages(template = 'crafted') {
       if (i === 2) { nodes[0].size = 112; }
       if (i === 5) { nodes[1].size = 23; nodes[1].y = 310; }
     }
-    return { id: `page-${i}`, kind: i, title: PAGE_TITLES[i], background: null, blur: 0, veil: .2, cropX: 50, cropY: 50, nodes };
+    return squarePage({ id: `page-${i}`, kind: i, title: PAGE_TITLES[i], background: null, blur: 0, veil: .2, cropX: 50, cropY: 50, nodes });
   });
+}
+
+export function squarePage(page) {
+  if (page.format === 'square') return page;
+  return { ...page, format: 'square', nodes: page.nodes.map(node => ({ ...node,
+    y: Math.round(Math.max(90, Math.min(620, 90 + (node.y - 90) * .6))),
+    ...(node.type === 'text' ? { size: Math.max(12, Math.round(node.size * .75)) } : { width: Math.round(node.width * .75) }),
+  })) };
 }
 
 export function quoteCandidates(chat, year, mode, options = {}) {
@@ -87,8 +95,8 @@ export function quoteCandidates(chat, year, mode, options = {}) {
   });
   return result;
 }
-export function sampleQuotes(candidates, mode, random = Math.random) {
+export function sampleQuotes(candidates, mode, random = Math.random, limit = mode === 'long' ? 2 : 5) {
   const unique = [...new Map(candidates.map(item => [item.text.replace(/\s/g, ''), item])).values()];
   for (let i = unique.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [unique[i], unique[j]] = [unique[j], unique[i]]; }
-  return unique.slice(0, mode === 'long' ? 2 : 5);
+  return unique.slice(0, limit);
 }

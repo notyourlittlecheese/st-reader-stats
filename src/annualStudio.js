@@ -1,5 +1,5 @@
 import { artStore, FONT_SLOTS, loadArtFonts, installFont } from './artStore.js';
-import { TEMPLATES, TOKENS, defaultPages, recapData, quoteCandidates, sampleQuotes } from './annualDesign.js';
+import { TEMPLATES, TOKENS, defaultPages, recapData, quoteCandidates, sampleQuotes, squarePage } from './annualDesign.js';
 import { drawArtwork, PAGE_WIDTH, PAGE_HEIGHT, hexColor, exportLayout } from './artRenderer.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -53,6 +53,13 @@ export class AnnualStudio {
     const saved = await artStore('get', this.key);
     if (this.disposed || request !== this.loadId) return;
     this.doc = saved?.version === 1 ? saved : { version: 1, pages: defaultPages(this.template), nightEnd: 6, quoteMode: 'long', quotes: [], quoteContext: '' };
+    if (this.doc.pages.some(page => page.format !== 'square')) {
+      const backupKey = `${this.key}:portrait-backup`;
+      if (!await artStore('get', backupKey)) await artStore('put', backupKey, clone(this.doc));
+      this.doc.pages = this.doc.pages.map(squarePage);
+      await artStore('put', this.key, clone(this.doc));
+    }
+    this.quotePool = null;
     this.index = 0; this.selected = null; this.undo = []; this.redo = [];
     this.data = recapData(this.records, this.dashboard.settings.collections, this.year, this.doc.nightEnd);
     await this.loadImages();
@@ -132,6 +139,10 @@ export class AnnualStudio {
           <label>本页名称 <input data-page-title maxlength="40" value="${esc(this.page.title)}"></label>
           <label>选中元素 <select data-node><option value="">请选择</option>${this.page.nodes.map(node => `<option value="${esc(node.id)}" ${node.id === this.selected ? 'selected' : ''}>${esc(node.type === 'avatar' ? '角色头像' : node.text.slice(0, 25))}</option>`).join('')}</select></label>
           <div data-node-fields></div>
+          <details><summary>批量应用字体</summary>
+            <label>字体 <select data-batch-font><option value="system">系统黑体</option><option value="serif">系统宋体</option>${Object.entries(FONT_SLOTS).map(([id, label]) => `<option value="${id}" ${this.fonts[id] ? '' : 'disabled'}>${label}${this.fonts[id] ? '' : '（先导入）'}</option>`).join('')}</select></label>
+            <button type="button" data-font-page>应用到本页文字</button><button type="button" data-font-all>应用到全部页文字</button><p>保留文案、字号和位置；可撤销。</p>
+          </details>
           <button type="button" data-add-text>插入文字</button>
           <label>插入角色头像 <select data-avatar><option value="">选择角色卡（合并组可任选）</option>${this.dashboard.adapter.characters().map(c => `<option value="${esc(c.avatar)}">${esc(c.name)}</option>`).join('')}</select></label>
           <details><summary>本页背景</summary>
@@ -147,8 +158,8 @@ export class AnnualStudio {
         <p>年度偏爱按选中汉字排序，沿用自定义分组。消息含双方；时间采用本设备时区，不代表在线时长。最晚聊天查找晚上 18 点至次日截止时间的记录。</p>
         <label>凌晨截止 <select data-night-end>${[3, 4, 5, 6, 7, 8].map(n => `<option value="${n}" ${n === this.doc.nightEnd ? 'selected' : ''}>${n}:00（不含）</option>`).join('')}</select></label>
         <label>摘录长度 <select data-quote-mode><option value="long" ${this.doc.quoteMode === 'long' ? 'selected' : ''}>长段 1—2 条</option><option value="short" ${this.doc.quoteMode === 'short' ? 'selected' : ''}>短句 4—5 条</option></select></label>
-        <button type="button" data-quotes>换一组真实摘录</button>
-        <p>仅在点击后读取年度偏爱组的聊天，取角色当前选中的回复、过滤重复片段。结果不足时显示实际条数；选中的摘录随本年度作品保存在本机。</p>
+        <button type="button" data-quotes>读取一批摘录供我挑选</button><div data-quote-picker></div>
+        <p>每批最多 30 条候选，勾选后点“使用选中的摘录”才替换当前展示。长段最多 2 条，短句最多 5 条。只取年度偏爱组角色当前选中的真实回复，候选仅暂存在内存。</p>
       </details>
     </div>`;
     const q = selector => this.host.querySelector(selector);
@@ -210,8 +221,20 @@ export class AnnualStudio {
       if (!this.disposed) { this.render(); this.status(`${FONT_SLOTS[slot]}已导入，可在元素字体中选择`); }
     }); });
     q('[data-night-end]').onchange = event => this.change(() => { this.doc.nightEnd = Number(event.target.value); this.data = recapData(this.records, this.dashboard.settings.collections, this.year, this.doc.nightEnd); });
-    q('[data-quote-mode]').onchange = event => this.change(() => { this.doc.quoteMode = event.target.value; });
+    q('[data-quote-mode]').onchange = event => {
+      this.quoteController?.abort();
+      this.quotePool = null;
+      this.change(() => { this.doc.quoteMode = event.target.value; });
+      this.renderQuotePicker();
+    };
     q('[data-quotes]').onclick = run(() => this.refreshQuotes());
+    const batchFont = all => {
+      const font = q('[data-batch-font]').value;
+      this.change(() => { for (const page of all ? this.doc.pages : [this.page]) for (const node of page.nodes) if (node.type === 'text') node.font = font; }, true);
+    };
+    q('[data-font-page]').onclick = () => batchFont(false);
+    q('[data-font-all]').onclick = () => batchFont(true);
+    this.renderQuotePicker();
     this.renderNodeFields(); this.draw(); this.bindDrag();
   }
   range(label, key, min, max, value) { return `<label>${label}<input type="range" min="${min}" max="${max}" value="${value}" data-bg-range="${key}"></label>`; }
@@ -235,7 +258,7 @@ export class AnnualStudio {
         ${number('字号（长文会自动缩小以免重叠）', 'size', 12, 220, node.size)}
         <label>对齐 <select data-align>${['left', 'center', 'right'].map((value, i) => `<option value="${value}" ${node.align === value ? 'selected' : ''}>${['左', '中', '右'][i]}</option>`).join('')}</select></label>
         <label>颜色 <select data-ink><option value="text" ${node.ink === 'text' ? 'selected' : ''}>正文色</option><option value="accent" ${node.ink === 'accent' ? 'selected' : ''}>主题色</option><option value="custom" ${!['text', 'accent'].includes(node.ink) ? 'selected' : ''}>自选</option></select><input type="color" data-ink-color value="${hexColor(node.ink, '#282831')}"></label>` : `<label>头像形状 <select data-shape>${['circle', 'rounded', 'original'].map((value, i) => `<option value="${value}" ${node.shape === value ? 'selected' : ''}>${['圆形', '圆角', '原比例'][i]}</option>`).join('')}</select></label>`}
-      <div class="srs-position-fields">${number('横向位置', 'x', 0, 680, node.x)}${number('纵向位置', 'y', 90, 950, node.y)}${number('宽度', 'width', 40, 680, node.width)}</div>
+      <div class="srs-position-fields">${number('横向位置', 'x', 0, 680, node.x)}${number('纵向位置', 'y', 90, 620, node.y)}${number('宽度', 'width', 40, 680, node.width)}</div>
       <div class="srs-art-actions"><button type="button" data-layer="back">下移一层</button><button type="button" data-layer="front">上移一层</button><button type="button" data-remove-node>删除元素</button></div>
     </div>`;
     const q = selector => fields.querySelector(selector);
@@ -295,7 +318,7 @@ export class AnnualStudio {
       let x = clamp(drag.x + dx, 0, 720 - drag.node.width);
       const center = 360 - drag.node.width / 2, snap = Math.abs(x - center) < 9;
       if (snap) x = center;
-      drag.node.x = Math.round(x); drag.node.y = Math.round(clamp(drag.y + dy, 90, 950));
+      drag.node.x = Math.round(x); drag.node.y = Math.round(clamp(drag.y + dy, 90, 620));
       this.draw(snap);
     };
     const end = () => { clearTimeout(timer); if (drag?.moved) this.save(); drag = null; this.renderNodeFields(); this.draw(); };
@@ -325,11 +348,32 @@ export class AnnualStudio {
       await new Promise(resolve => setTimeout(resolve, 0));
     }
     if (this.disposed || controller.signal.aborted) return;
-    const picked = sampleQuotes(candidates, mode);
+    const picked = sampleQuotes(candidates, mode, Math.random, 30);
     if (!picked.length) return this.status('没有找到符合长度的真实摘录，可切换长段/短句重试。');
-    this.change(() => { this.doc.quotes = picked; this.doc.quoteContext = context; });
-    const index = this.doc.pages.findIndex(page => page.kind === 5); if (index >= 0) this.go(index);
-    this.status(`已选取 ${picked.length} 条真实摘录，来自 ${favorite.name}`);
+    this.quotePool = { picked, mode, context, selected: new Set() };
+    this.renderQuotePicker();
+    this.status(`找到 ${picked.length} 条候选，来自 ${favorite.name}。请在下方勾选，当前摘录尚未替换。`);
+  }
+  renderQuotePicker() {
+    const host = this.host.querySelector('[data-quote-picker]');
+    if (!host) return;
+    if (!this.quotePool) { host.innerHTML = ''; return; }
+    const pool = this.quotePool, limit = pool.mode === 'long' ? 2 : 5;
+    host.innerHTML = `<p data-pick-status>请选择 1—${limit} 条（按勾选顺序展示）</p><div class="srs-quote-options">${pool.picked.map((quote, i) => `<label><input type="checkbox" data-quote-index="${i}" ${pool.selected.has(i) ? 'checked' : ''}><span>${esc(quote.text)}<br><small>${esc(quote.day)}</small></span></label>`).join('')}</div><button type="button" data-use-quotes>使用选中的摘录</button>`;
+    const status = message => { host.querySelector('[data-pick-status]').textContent = message; };
+    host.querySelectorAll('[data-quote-index]').forEach(input => { input.onchange = () => {
+      const i = Number(input.dataset.quoteIndex);
+      if (input.checked && pool.selected.size >= limit) { input.checked = false; status(`最多选择 ${limit} 条，请先取消一条。`); return; }
+      if (input.checked) pool.selected.add(i); else pool.selected.delete(i);
+      status(`已选 ${pool.selected.size}/${limit} 条`);
+    }; });
+    host.querySelector('[data-use-quotes]').onclick = () => {
+      if (!pool.selected.size) { status('请先勾选想展示的摘录'); return; }
+      this.change(() => { this.doc.quotes = [...pool.selected].map(i => pool.picked[i]); this.doc.quoteContext = pool.context; });
+      const index = this.doc.pages.findIndex(page => page.kind === 5);
+      if (index >= 0) { this.view = 'single'; this.edit = false; this.go(index); }
+      this.status('已应用你选中的摘录');
+    };
   }
   async export(all) {
     await this.saveQueue; await document.fonts.ready;
