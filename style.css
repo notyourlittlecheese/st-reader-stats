@@ -2,6 +2,19 @@ body.st-reader-stats-open {
   overflow: hidden;
 }
 
+/* Blur the actual page roots as well: some mobile themes disable backdrop
+   compositing, leaving transparent panels with fully legible text behind them.
+   The selector stops applying immediately when the statistics panel closes. */
+body.st-reader-stats-open > :not(#st-reader-stats-root):not(script):not(style):not(link) {
+  filter: blur(18px) !important;
+}
+
+.srs-art-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 14px; background: var(--srs-surface, #f7f5f3); border-radius: 14px; }
+.srs-art-grid[hidden], .srs-studio-layout[hidden] { display: none; }
+.srs-art-grid button { padding: 0; border: 0; background: transparent; min-width: 0; text-align: left; }
+.srs-art-grid canvas { display: block; width: 100%; height: auto; border-radius: 10px; box-shadow: 0 3px 12px #0002; }
+.srs-art-grid span { display: block; padding: 6px 2px; font-size: 12px; }
+
 .srs-theme-controls { font-size: 13px; margin-top: 8px; }
 .srs-theme-controls summary { cursor: pointer; }
 .srs-theme-controls label { display: inline-flex; align-items: center; gap: 6px; margin: 8px 10px 0 0; }
@@ -61,6 +74,7 @@ body.st-reader-stats-open {
 }
 
 .st-reader-stats-dialog {
+  position: relative;
   --srs-accent: #ed4777;
   --srs-accent-dark: #a81750;
   --srs-card: color-mix(in srgb, var(--SmartThemeBlurTintColor, #222) 88%, white 12%);
@@ -74,14 +88,25 @@ body.st-reader-stats-open {
   background: var(--srs-surface, #202124) !important;
   border: 1px solid var(--SmartThemeBorderColor, #555);
   border-radius: 16px;
-  box-shadow: 0 24px 80px rgb(0 0 0 / 45%);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 35%), inset 0 2px 2px #ffffff80, inset 0 0 22px #ffffff35;
 }
 
+#st-reader-stats-root .st-reader-stats-dialog::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: .07;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.8'/%3E%3C/svg%3E");
+}
+.st-reader-stats-dialog > * { position: relative; }
+
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .st-reader-stats-dialog {
+  #st-reader-stats-root .st-reader-stats-dialog {
     background: var(--srs-frosted-surface, rgba(32, 33, 36, .96)) !important;
-    -webkit-backdrop-filter: blur(32px) saturate(125%);
-    backdrop-filter: blur(32px) saturate(125%);
+    -webkit-backdrop-filter: blur(32px) saturate(125%) !important;
+    backdrop-filter: blur(32px) saturate(125%) !important;
   }
 }
 

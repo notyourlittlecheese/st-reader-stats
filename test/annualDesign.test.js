@@ -2,6 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { analyzeChat, sentMinute } from '../src/statsCore.js';
 import { recapData, fillTokens, defaultPages, quoteCandidates, sampleQuotes } from '../src/annualDesign.js';
+import { exportLayout } from '../src/artRenderer.js';
+
+test('grid export uses two columns and retains each page, including an odd last row', () => {
+  const layout = exportLayout(6, 'grid');
+  assert.equal(layout.width, 1512);
+  assert.equal(layout.height, 3336);
+  assert.deepEqual(layout.positions[1], { x: 768, y: 24 });
+  assert.deepEqual(layout.positions[2], { x: 24, y: 1128 });
+  assert.equal(exportLayout(5, 'grid').height, layout.height);
+  assert.equal(exportLayout(6, 'long').height, 6480);
+  assert.equal(exportLayout(1, 'single').width, 1440);
+});
 
 test('late-night time orders evening before morning and excludes date-only messages', () => {
   const stats = analyzeChat([

@@ -297,7 +297,7 @@ export class StatsDashboard {
     const channels = getComputedStyle(dialog).color.match(/[\d.]+/g)?.map(Number);
     const lightText = !channels || (.2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2]) > 140;
     dialog.style.setProperty('--srs-surface', lightText ? '#202124' : '#f7f5f3');
-    dialog.style.setProperty('--srs-frosted-surface', lightText ? 'rgba(25, 26, 32, .42)' : 'rgba(249, 247, 245, .36)');
+    dialog.style.setProperty('--srs-frosted-surface', lightText ? 'rgba(25, 26, 32, .56)' : 'rgba(249, 247, 245, .52)');
     this.applyAccent();
     const picker = this.root.querySelector('[data-accent-picker]');
     const hex = this.root.querySelector('[data-accent-hex]');

@@ -2,6 +2,14 @@ import { FONT_FAMILIES } from './artStore.js';
 import { fillTokens } from './annualDesign.js';
 
 export const PAGE_WIDTH = 720, PAGE_HEIGHT = 1080;
+export function exportLayout(count, mode) {
+  const scale = mode === 'single' ? 2 : 1;
+  const gap = mode === 'grid' ? 24 : 0;
+  const columns = mode === 'grid' ? Math.min(2, count) : 1;
+  const rows = Math.ceil(count / columns);
+  return { scale, width: PAGE_WIDTH * scale * columns + gap * (columns + 1), height: PAGE_HEIGHT * scale * rows + gap * (rows + 1),
+    positions: Array.from({ length: count }, (_, i) => ({ x: gap + (i % columns) * (PAGE_WIDTH * scale + gap), y: gap + Math.floor(i / columns) * (PAGE_HEIGHT * scale + gap) })) };
+}
 export function mixHex(hex, other, amount) {
   const parse = color => [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16));
   const a = parse(hex), b = parse(other);

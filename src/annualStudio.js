@@ -1,6 +1,6 @@
 import { artStore, FONT_SLOTS, loadArtFonts, installFont } from './artStore.js';
 import { TEMPLATES, TOKENS, defaultPages, recapData, quoteCandidates, sampleQuotes } from './annualDesign.js';
-import { drawArtwork, PAGE_WIDTH, PAGE_HEIGHT, hexColor } from './artRenderer.js';
+import { drawArtwork, PAGE_WIDTH, PAGE_HEIGHT, hexColor, exportLayout } from './artRenderer.js';
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clone = value => JSON.parse(JSON.stringify(value));
@@ -32,6 +32,7 @@ export class AnnualStudio {
     this.dashboard = dashboard; this.records = records; this.host = dashboard.content();
     this.year = new Date().getFullYear(); this.template = 'crafted'; this.index = 0;
     this.edit = false; this.selected = null; this.images = new Map(); this.undo = []; this.redo = [];
+    this.view = 'grid';
     this.saveQueue = Promise.resolve(); this.quoteController = null; this.disposed = false; this.loadId = 0;
   }
   get page() { return this.doc.pages[this.index]; }
@@ -114,12 +115,14 @@ export class AnnualStudio {
       <div class="srs-studio-toolbar">
         <label>年份 <select data-year>${years.map(y => `<option ${Number(y) === this.year ? 'selected' : ''}>${y}</option>`).join('')}</select></label>
         <label>模板 <select data-template>${Object.entries(TEMPLATES).map(([key, name]) => `<option value="${key}" ${key === this.template ? 'selected' : ''}>${name}</option>`).join('')}</select></label>
+        <button type="button" data-view-mode>${this.view === 'grid' ? '单页预览' : '宫格预览'}</button>
         <button type="button" data-edit>${this.edit ? '完成编辑' : '编辑排版'}</button>
-        <button type="button" data-export-page>导出本页 PNG</button><button type="button" data-export-all>导出整份长图</button>
+        <button type="button" data-export-grid>导出宫格 PNG</button><button type="button" data-export-page>导出本页 PNG</button><button type="button" data-export-all>导出整份长图</button>
         <button type="button" data-save-art>保存</button>
       </div>
       <p class="srs-studio-status" data-art-status role="status">${this.missingImages ? '部分图片未能加载，请在编辑模式重新选择或上传。' : '布局和素材保存在当前浏览器；切换模板会保留各自排版。'}</p>
-      <div class="srs-studio-layout ${this.edit ? 'is-editing' : ''}">
+      <div class="srs-art-grid" ${this.view === 'grid' ? '' : 'hidden'}>${this.doc.pages.map((page, i) => `<button type="button" data-grid-page="${i}" aria-label="编辑第 ${i + 1} 页：${esc(page.title)}"><canvas data-grid-canvas="${i}"></canvas><span>${i + 1} / ${esc(page.title)} · 点按编辑</span></button>`).join('')}</div>
+      <div class="srs-studio-layout ${this.edit ? 'is-editing' : ''}" ${this.view === 'grid' ? 'hidden' : ''}>
         <div class="srs-stage-wrap"><canvas class="srs-stage" aria-label="年度总结画布" tabindex="0"></canvas>
           <nav class="srs-page-nav"><button type="button" data-prev>上一页</button><select data-page>${this.doc.pages.map((p, i) => `<option value="${i}" ${i === this.index ? 'selected' : ''}>${i + 1}. ${esc(p.title)}</option>`).join('')}</select><button type="button" data-next>下一页</button></nav>
           <p class="srs-stage-help">${this.edit ? '点选文字或头像；手机长按后拖动。靠近中线自动对齐，也可在右侧/下方微调位置。' : '查看模式 · 点“编辑排版”修改文案、字体、背景和头像。'}</p>
@@ -152,9 +155,12 @@ export class AnnualStudio {
     const run = fn => () => Promise.resolve().then(fn).catch(error => this.status(error.message));
     q('[data-year]').onchange = event => this.switchDocument(Number(event.target.value), this.template);
     q('[data-template]').onchange = event => this.switchDocument(this.year, event.target.value);
-    q('[data-edit]').onclick = () => { this.edit = !this.edit; this.selected = null; this.render(); };
+    q('[data-edit]').onclick = () => { this.edit = !this.edit; this.view = this.edit ? 'single' : 'grid'; this.selected = null; this.render(); };
+    q('[data-view-mode]').onclick = () => { this.view = this.view === 'grid' ? 'single' : 'grid'; this.edit = false; this.selected = null; this.render(); };
+    this.host.querySelectorAll('[data-grid-page]').forEach(button => { button.onclick = () => { this.view = 'single'; this.edit = true; this.go(Number(button.dataset.gridPage)); }; });
     q('[data-save-art]').onclick = run(() => this.save());
     q('[data-export-page]').onclick = run(() => this.export(false)); q('[data-export-all]').onclick = run(() => this.export(true));
+    q('[data-export-grid]').onclick = run(() => this.export('grid'));
     q('[data-page]').onchange = event => this.go(Number(event.target.value));
     q('[data-prev]').onclick = () => this.go(this.index - 1); q('[data-next]').onclick = () => this.go(this.index + 1);
     q('[data-prev]').disabled = this.index === 0; q('[data-next]').disabled = this.index === this.doc.pages.length - 1;
@@ -259,13 +265,17 @@ export class AnnualStudio {
   }
   draw(guides = false) {
     if (this.disposed) return;
-    const canvas = this.host.querySelector('canvas'); if (!canvas) return;
+    const canvas = this.host.querySelector('.srs-stage'); if (!canvas) return;
+    if (this.view === 'grid') {
+      this.host.querySelectorAll('[data-grid-canvas]').forEach(preview => drawArtwork(preview, this.doc.pages[Number(preview.dataset.gridCanvas)], this.template, this.values(), { accent: hexColor(this.dashboard.settings.accent, '#ed4777'), images: this.images, scale: .5 }));
+      return;
+    }
     this.boxes = drawArtwork(canvas, this.page, this.template, this.values(), { accent: hexColor(this.dashboard.settings.accent, '#ed4777'), images: this.images, selected: this.edit ? this.selected : null, guides });
     this.host.querySelector('[data-undo]')?.toggleAttribute('disabled', !this.undo.length);
     this.host.querySelector('[data-redo]')?.toggleAttribute('disabled', !this.redo.length);
   }
   bindDrag() {
-    const canvas = this.host.querySelector('canvas'); let drag = null, timer;
+    const canvas = this.host.querySelector('.srs-stage'); let drag = null, timer;
     const point = event => { const rect = canvas.getBoundingClientRect(); return { x: (event.clientX - rect.left) * PAGE_WIDTH / rect.width, y: (event.clientY - rect.top) * PAGE_HEIGHT / rect.height }; };
     canvas.onpointerdown = event => {
       if (!this.edit) return;
@@ -327,15 +337,18 @@ export class AnnualStudio {
     if (this.missingImages) throw new Error('有图片未加载，请先重新选择或移除后再导出');
     this.status('正在生成图片…');
     const pages = all ? this.doc.pages : [this.page];
-    const scale = all ? 1 : 2;
-    const output = document.createElement('canvas'); output.width = PAGE_WIDTH * scale; output.height = PAGE_HEIGHT * scale * pages.length;
+    const grid = all === 'grid';
+    const layout = exportLayout(pages.length, grid ? 'grid' : all ? 'long' : 'single');
+    const scale = layout.scale;
+    const output = document.createElement('canvas'); output.width = layout.width; output.height = layout.height;
     const ctx = output.getContext('2d'), pageCanvas = document.createElement('canvas');
+    if (grid) { ctx.fillStyle = '#faf7f3'; ctx.fillRect(0, 0, output.width, output.height); }
     for (let i = 0; i < pages.length; i++) {
       drawArtwork(pageCanvas, pages[i], this.template, this.values(), { accent: hexColor(this.dashboard.settings.accent, '#ed4777'), images: this.images, scale });
-      ctx.drawImage(pageCanvas, 0, PAGE_HEIGHT * scale * i);
+      ctx.drawImage(pageCanvas, layout.positions[i].x, layout.positions[i].y);
       await new Promise(resolve => setTimeout(resolve, 0));
     }
-    download(await toBlob(output), `阅读手记-${this.year}-${this.template}-${all ? '长图' : this.index + 1}.png`);
+    download(await toBlob(output), `阅读手记-${this.year}-${this.template}-${grid ? '宫格' : all ? '长图' : this.index + 1}.png`);
     this.status('图片已生成；手机请在浏览器下载记录中查看');
   }
   dispose() { this.disposed = true; this.loadId++; this.quoteController?.abort(); }
